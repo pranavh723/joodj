@@ -3,7 +3,7 @@
 # ==============================
 
 BOT_TOKEN = "8222403305:AAHJ9ewwYYNa3lWFm3fZhgBplCP65e6g054"
-SENDER_ID = [7259707610,7775543235]  # authorized sender
+SENDER_ID = 7259707610  # authorized sender
 RECEIVER_IDS = [
     8397270065,7775543235
     222222222,
