@@ -2,11 +2,11 @@
 # ⚙️ CONFIG (HARDCODED)
 # ==============================
 
-BOT_TOKEN = "8222403305:AAHJ9ewwYYNa3lWFm3fZhgBplCP65e6g054"
-SENDER_ID = 7259707610  # authorized sender
+BOT_TOKEN = "8222403305:AAHJ9ewwYYNa3lWFm3fZhgBplCP65e6g054"  # your hardcoded token
+SENDER_ID = 7259707610  # only this user can push/pull/stop
 RECEIVER_IDS = [
     8397270065,
-    7775543235,
+    222222222,
 ]
 DROP_INTERVAL = 1 * 60  # seconds
 
@@ -19,6 +19,7 @@ import logging
 from typing import List
 
 from telegram import Update
+from telegram.error import Conflict
 from telegram.ext import (
     Application,
     ApplicationBuilder,
@@ -91,8 +92,8 @@ async def push(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def _drain_queue_loop(app: Application):
     """
-    Background loop: after initial send (already done by pull),
-    continue sending one IP per interval to all receivers until queue empty.
+    After initial send (done by /pull), continue sending one IP per interval
+    to all receivers until the queue is empty. Cancels cleanly on /stop.
     """
     try:
         while ip_queue:
@@ -196,6 +197,7 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
+    # PTB version log
     try:
         import telegram
         log.info("python-telegram-bot = %s", telegram.__version__)
@@ -204,15 +206,23 @@ def main():
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
+    # Command handlers
     app.add_handler(CommandHandler("start", start, block=False))
     app.add_handler(CommandHandler("whoami", whoami, block=False))
     app.add_handler(CommandHandler("pull", pull, block=False))
     app.add_handler(CommandHandler("stop", stop_cmd, block=False))
     app.add_handler(CommandHandler("status", status_cmd, block=False))
+
+    # /push must be first token on the line followed by IPs on new lines
     app.add_handler(MessageHandler(filters.Regex(r"^/push"), push, block=False))
 
     log.info("🤖 Bot running...")
-    app.run_polling()
+    try:
+        app.run_polling()
+    except Conflict:
+        # Another instance or webhook is active; exit cleanly so the platform can restart or you can stop the other runner
+        log.error("Another instance or a webhook is active for this token. Only one delivery method allowed. Exiting.")
+        raise
 
 
 if __name__ == "__main__":
