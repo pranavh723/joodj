@@ -1,34 +1,16 @@
-# ==============================
-# ⚙️ CONFIG (HARDCODED)
-# ==============================
-
-BOT_TOKEN = "8222403305:AAHJ9ewwYYNa3lWFm3fZhgBplCP65e6g054"  # hardcoded as requested
+# main.py
+BOT_TOKEN = "8222403305:AAHJ9ewwYYNa3lWFm3fZhgBplCP65e6g054"
 SENDER_ID = 7259707610
-RECEIVER_IDS = [
-    8397270065,
-    222222222,
-]
-DROP_INTERVAL = 6 * 60  # seconds
-
-# ==============================
-# 🚀 BOT CODE (PTB v21+)
-# ==============================
+RECEIVER_IDS = [8397270065, 222222222]
+DROP_INTERVAL = 6 * 60
 
 import asyncio
 from typing import List
 from telegram import Update
-from telegram.ext import (
-    Application,
-    ApplicationBuilder,
-    CommandHandler,
-    MessageHandler,
-    ContextTypes,
-    filters,
-)
+from telegram.ext import ApplicationBuilder, Application, CommandHandler, MessageHandler, ContextTypes, filters
 
 ip_queue: List[str] = []
 sending_task: asyncio.Task | None = None
-
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -38,26 +20,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/status (queue + sending state)"
     )
 
-
 def extract_ips_from_push(text: str) -> List[str]:
-    lines = text.splitlines()[1:]  # drop the '/push' line
-    ips = [ln.strip() for ln in lines if ln.strip()]
-    return ips
-
+    lines = text.splitlines()[1:]
+    return [ln.strip() for ln in lines if ln.strip()]
 
 async def push(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != SENDER_ID:
         await update.message.reply_text("❌ You are not authorized to push.")
         return
-
     ips = extract_ips_from_push(update.message.text or "")
     if not ips:
         await update.message.reply_text("⚠️ No IPs found in message.")
         return
-
     ip_queue.extend(ips)
     await update.message.reply_text(f"✅ Added {len(ips)} IPs to queue.")
-
 
 async def _send_loop(app: Application):
     try:
@@ -67,17 +43,14 @@ async def _send_loop(app: Application):
                 try:
                     await app.bot.send_message(chat_id=rid, text=ip)
                 except Exception as e:
-                    # log but continue
                     print(f"⚠️ Failed to send to {rid}: {e}")
             await asyncio.sleep(DROP_INTERVAL)
     finally:
-        # notify completion
         for rid in RECEIVER_IDS:
             try:
                 await app.bot.send_message(chat_id=rid, text="✅ Done")
             except Exception:
                 pass
-
 
 async def pull(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global sending_task
@@ -90,13 +63,10 @@ async def pull(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if sending_task and not sending_task.done():
         await update.message.reply_text("⏳ Already sending.")
         return
-
     await update.message.reply_text(
         f"🚀 Started sending IPs to {len(RECEIVER_IDS)} receivers every {DROP_INTERVAL} sec."
     )
-    # create a background task on PTB's event loop
     sending_task = context.application.create_task(_send_loop(context.application))
-
 
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     in_progress = sending_task is not None and not sending_task.done()
@@ -106,18 +76,22 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👥 Receivers: {len(RECEIVER_IDS)}"
     )
 
-
 def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    print("PTB version check before build...")
+    try:
+        import telegram
+        print("python-telegram-bot =", telegram.__version__)
+    except Exception as e:
+        print("PTB not importable:", e)
 
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("pull", pull))
     app.add_handler(CommandHandler("status", status_cmd))
     app.add_handler(MessageHandler(filters.Regex(r"^/push"), push))
-
     print("🤖 Bot running...")
     app.run_polling()
 
-
 if __name__ == "__main__":
     main()
+
