@@ -8,7 +8,7 @@ RECEIVER_IDS = [
     8397270065,
     7775543235,
 ]
-DROP_INTERVAL = 6 * 60  # seconds
+DROP_INTERVAL = 1 * 60  # seconds
 
 # ==============================
 # 🚀 BOT CODE (PTB v21+)
