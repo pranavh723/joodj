@@ -31,6 +31,8 @@ import asyncio
 import json
 import logging
 import os
+import signal
+import sys
 from typing import Dict, List, Set, Optional
 from datetime import datetime
 
@@ -316,15 +318,22 @@ async def start_user_timer(user_id: int, interval: int, app: Application):
 
 async def stop_user_timer(user_id: int):
     """Stop timer for user"""
-    if user_id in user_timers:
-        user_timers[user_id].cancel()
-        try:
-            await user_timers[user_id]
-        except asyncio.CancelledError:
-            pass
-        del user_timers[user_id]
-    
-    bot_data.set_timer_active(user_id, False)
+    try:
+        if user_id in user_timers:
+            if not user_timers[user_id].done():
+                user_timers[user_id].cancel()
+            try:
+                await user_timers[user_id]
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.error(f"Error stopping timer for user {user_id}: {e}")
+            finally:
+                del user_timers[user_id]
+        
+        bot_data.set_timer_active(user_id, False)
+    except Exception as e:
+        logger.error(f"Error in stop_user_timer for user {user_id}: {e}")
 
 # ==============================
 # 🤖 COMMAND HANDLERS
@@ -1093,8 +1102,22 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 # 🚀 MAIN FUNCTION
 # ==============================
 
+def signal_handler(signum, frame):
+    """Handle shutdown signals"""
+    print(f"\n🛑 Received signal {signum}, shutting down gracefully...")
+    
+    # Stop all active timers
+    for user_id in list(user_timers.keys()):
+        bot_data.set_timer_active(user_id, False)
+    
+    sys.exit(0)
+
 def main():
     """Main function to start the bot"""
+    
+    # Setup signal handlers for graceful shutdown
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
     
     # Validate configuration
     if not BOT_TOKEN or BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
@@ -1139,13 +1162,21 @@ def main():
     except KeyboardInterrupt:
         print("\n👋 Bot stopped by user")
         logger.info("Bot stopped by user")
+        # Stop all timers gracefully
+        for user_id in list(user_timers.keys()):
+            bot_data.set_timer_active(user_id, False)
     except Exception as e:
         print(f"❌ Unexpected error: {e}")
         logger.error(f"Unexpected bot error: {e}")
     finally:
-        # Clean up active timers
-        for user_id in list(user_timers.keys()):
-            user_timers[user_id].cancel()
+        # Clean up active timers safely
+        try:
+            for user_id in list(user_timers.keys()):
+                if not user_timers[user_id].done():
+                    user_timers[user_id].cancel()
+            user_timers.clear()
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")
         print("🧹 Cleanup completed")
 
 # ==============================
