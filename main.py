@@ -319,21 +319,16 @@ async def start_user_timer(user_id: int, interval: int, app: Application):
 async def stop_user_timer(user_id: int):
     """Stop timer for user"""
     try:
-        if user_id in user_timers:
-            if not user_timers[user_id].done():
-                user_timers[user_id].cancel()
-            try:
-                await user_timers[user_id]
-            except asyncio.CancelledError:
-                pass
-            except Exception as e:
-                logger.error(f"Error stopping timer for user {user_id}: {e}")
-            finally:
-                del user_timers[user_id]
-        
+        # Mark timer as inactive - it will stop naturally
         bot_data.set_timer_active(user_id, False)
+        
+        # Remove from active timers dict
+        if user_id in user_timers:
+            del user_timers[user_id]
+        
+        logger.info(f"Timer stopped for user {user_id}")
     except Exception as e:
-        logger.error(f"Error in stop_user_timer for user {user_id}: {e}")
+        logger.error(f"Error stopping timer for user {user_id}: {e}")
 
 # ==============================
 # 🤖 COMMAND HANDLERS
@@ -1106,9 +1101,13 @@ def signal_handler(signum, frame):
     """Handle shutdown signals"""
     print(f"\n🛑 Received signal {signum}, shutting down gracefully...")
     
-    # Stop all active timers
-    for user_id in list(user_timers.keys()):
-        bot_data.set_timer_active(user_id, False)
+    # Just mark timers as inactive, let them stop naturally
+    try:
+        for user_id in list(user_timers.keys()):
+            bot_data.set_timer_active(user_id, False)
+        logger.info("Marked all timers for shutdown")
+    except Exception as e:
+        logger.error(f"Error in signal handler: {e}")
     
     sys.exit(0)
 
@@ -1162,22 +1161,27 @@ def main():
     except KeyboardInterrupt:
         print("\n👋 Bot stopped by user")
         logger.info("Bot stopped by user")
-        # Stop all timers gracefully
-        for user_id in list(user_timers.keys()):
-            bot_data.set_timer_active(user_id, False)
     except Exception as e:
         print(f"❌ Unexpected error: {e}")
         logger.error(f"Unexpected bot error: {e}")
-    finally:
-        # Clean up active timers safely
-        try:
-            for user_id in list(user_timers.keys()):
-                if not user_timers[user_id].done():
-                    user_timers[user_id].cancel()
-            user_timers.clear()
-        except Exception as e:
-            logger.error(f"Error during cleanup: {e}")
-        print("🧹 Cleanup completed")
+    
+    # Cleanup after bot stops (while event loop is still active)
+    print("🧹 Cleaning up...")
+    cleanup_timers()
+    print("✅ Cleanup completed")
+
+def cleanup_timers():
+    """Clean up all active timers"""
+    try:
+        # Mark all timers as inactive in data
+        for user_id in list(user_timers.keys()):
+            bot_data.set_timer_active(user_id, False)
+        
+        # Clear the timers dict (don't cancel as they'll stop naturally)
+        user_timers.clear()
+        logger.info("All timers cleaned up successfully")
+    except Exception as e:
+        logger.error(f"Error during timer cleanup: {e}")
 
 # ==============================
 # 🎯 ENTRY POINT
